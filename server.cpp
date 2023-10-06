@@ -5,9 +5,27 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
+#include <thread>
+#include <vector>
 
-#define PORT 8082
+
+#define PORT 8084
 #define BUFFER_SIZE 1024
+
+int client1_fd, client2_fd;
+
+void handleClient(int client_fd, int other_client_fd) {
+    char buffer[BUFFER_SIZE];
+    while (true) {
+        memset(buffer, 0, BUFFER_SIZE);
+        ssize_t bytes_read = read(client_fd, buffer, BUFFER_SIZE);
+        if (bytes_read <= 0) {
+            // Handle disconnection or error.
+            break;
+        }
+        send(other_client_fd, buffer, strlen(buffer), 0);
+    }
+}
 
 int main() {
     int server_fd, client1_fd, client2_fd;
@@ -43,28 +61,17 @@ int main() {
 
     std::cout << "Waiting for clients to connect..." << std::endl;
     
-    if ((client1_fd = accept(server_fd, (struct sockaddr*)&address, (socklen_t*)&addrlen)) < 0) {
-        perror("Accept failed");
-        exit(EXIT_FAILURE);
-    }
+    client1_fd = accept(server_fd, (struct sockaddr*)&address, (socklen_t*)&addrlen);
     std::cout << "Client 1 connected." << std::endl;
 
-    if ((client2_fd = accept(server_fd, (struct sockaddr*)&address, (socklen_t*)&addrlen)) < 0) {
-        perror("Accept failed");
-        exit(EXIT_FAILURE);
-    }
+    client2_fd = accept(server_fd, (struct sockaddr*)&address, (socklen_t*)&addrlen);
     std::cout << "Client 2 connected." << std::endl;
 
-    while (true) {
-        // Relay messages between clients.
-        memset(buffer, 0, BUFFER_SIZE);
-        read(client1_fd, buffer, BUFFER_SIZE);
-        send(client2_fd, buffer, strlen(buffer), 0);
-        
-        memset(buffer, 0, BUFFER_SIZE);
-        read(client2_fd, buffer, BUFFER_SIZE);
-        send(client1_fd, buffer, strlen(buffer), 0);
-    }
+    std::thread client1Thread(handleClient, client1_fd, client2_fd);
+    std::thread client2Thread(handleClient, client2_fd, client1_fd);
+
+    client1Thread.join();
+    client2Thread.join();
 
     return 0;
 }
