@@ -1,18 +1,16 @@
-: 
-: 
-:  is A
-:  is B
-: s still reading
-: is it ignoring the first word
-a[A: 
-b: 
-b: aa
-b: bb
-b: bb
-b: ss
-a[A: ss
-a[A: ss
-a[A: ss
-a[A: cc
-a[A: why is it ignroing
-b: why is it ignoring the first word
+aa: 
+bb: 
+r: 
+r: aa
+r: aa
+r: aa
+r: bb
+r: bb
+a: 
+bn: 
+bn: a
+a: a
+a: a
+a: r
+bn: r
+bn: r

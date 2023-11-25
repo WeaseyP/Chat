@@ -10,9 +10,8 @@
 #include <vector>
 #include <string>
 #include <fstream>
-#include <algorithm> 
+#include <algorithm>
 
-#define PORT 3776
 #define BUFFER_SIZE 1024
 
 struct ChatMessage
@@ -21,11 +20,12 @@ struct ChatMessage
     char message[BUFFER_SIZE - 100]; // Use the rest of the buffer for the actual message
 };
 
-std::ofstream chatLogFile;  // Declare a file stream for the chat log
+std::ofstream chatLogFile; // Declare a file stream for the chat log
 std::vector<int> clients;
 
 // Function to log chat messages to the file
-void logMessage(const ChatMessage& chatMsg) {
+void logMessage(const ChatMessage &chatMsg)
+{
     chatLogFile << chatMsg.username << ": " << chatMsg.message << std::endl;
 }
 
@@ -68,13 +68,18 @@ void sendToClient(int client_fd)
     // Might be required later.
 }
 
-int main()
+int main(int argc, char *argv[])
 {
+    if (argc != 2)
+    {
+        std::cerr << "Usage: " << argv[0] << " <port>" << std::endl;
+        return EXIT_FAILURE;
+    }
 
-    std::atexit([]() {
-        chatLogFile.close();
-    });
+    std::atexit([]()
+                { chatLogFile.close(); });
 
+    int port = std::stoi(argv[1]);
 
     int server_fd, client1_fd, client2_fd;
     struct sockaddr_in address;
@@ -97,7 +102,7 @@ int main()
 
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(PORT);
+    address.sin_port = htons(port); // Use the specified port
 
     if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0)
     {
@@ -120,19 +125,44 @@ int main()
     std::cout << "Client 1 connected." << std::endl;
 
     std::thread client1ReadThread(readFromClient, client1_fd);
-    //std::thread client1SendThread(sendToClient, client1_fd);
 
     client2_fd = accept(server_fd, (struct sockaddr *)&address, (socklen_t *)&addrlen);
     clients.push_back(client2_fd);
     std::cout << "Client 2 connected." << std::endl;
 
     std::thread client2ReadThread(readFromClient, client2_fd);
-    //std::thread client2SendThread(sendToClient, client2_fd);
+
+    std::string servermessage;
+    std::getline(std::cin, servermessage);
+
+    if (servermessage == "exit")
+    {
+        std::cout << "Closing server." << std::endl;
+
+        // Stop the client thread
+        if (client1ReadThread.joinable())
+        {
+            client1ReadThread.join();
+        }
+
+        // Stop the client thread
+        if (client2ReadThread.joinable())
+        {
+            client2ReadThread.join();
+        }
+
+        // Close all client sockets
+        for (int fd : clients)
+        {
+            close(fd);
+        }
+
+        close(server_fd);
+        return 0;
+    }
 
     client1ReadThread.join();
     client2ReadThread.join();
-
-
 
     return 0;
 }
