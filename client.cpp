@@ -1,14 +1,22 @@
 // client.cpp
 #include <iostream>
+#include <string>
 #include <cstring>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <thread>
 #include <mutex>
-#define PORT 8084
+
+#define PORT 3776
 #define BUFFER_SIZE 1024
+
+struct ChatMessage {
+    char username[100]; // Fixed size for simplicity
+    char message[BUFFER_SIZE - 100]; // Use the rest of the buffer for the actual message
+};
 
 //Mutex for cout for send/receive.
 std::mutex cout_mutex;
@@ -18,53 +26,48 @@ Receive message from server
 Arguments: int sock - socket
 Listens for messages from the server and prints them.
 */
-void receiveMessage(int sock) {
-    // Buffer to store the message.
-    char buffer[BUFFER_SIZE]; 
-    //Keep listening for messages.
+void receiveMessage(int sock, const std::string& username) {
+    ChatMessage chatMsg;
+
     while (true) {
-        // Clear the buffer.
-        memset(buffer, 0, BUFFER_SIZE); 
-        // Read a message from the server. 
-        ssize_t bytes_read = read(sock, buffer, BUFFER_SIZE);
-        // Disconnect or error. 
+        memset(&chatMsg, 0, sizeof(chatMsg));
+        ssize_t bytes_read = read(sock, &chatMsg, sizeof(chatMsg));
+
         if (bytes_read <= 0) {
             // Handle disconnection or error.
             break;
         }
-        //Lock std::cout
-        cout_mutex.lock();
-        std::cout << "Someone Else: " << buffer << std::endl;
-        std::cout << "You: ";
-        //Unlock std::cout
-        cout_mutex.unlock();
+        {
+            // Lock std::cout
+            std::lock_guard<std::mutex> lock(cout_mutex);
+
+            std::cout << chatMsg.username << ": " << chatMsg.message << std::endl;
+        } // unlock std::cout after leaving the scope
     }
 }
 /*
-Receive message from server
-Arguments: int sock - socket
-Listens for messages from the client and sends them to the server
+Send messages to the server.
+Arguments:
+  int sock - socket file descriptor
+  const std::string& username - the username of the sender
+Waits for user input and sends the prefixed message to the server.
 */
-void sendMessage(int sock) {
-    // Buffer to store the message.
-    char message[BUFFER_SIZE];
-    //Keep listening for messages.
+void sendMessage(int sock, const std::string& username) {
+    ChatMessage chatMsg;
+    strncpy(chatMsg.username, username.c_str(), sizeof(chatMsg.username) - 1);
+
     while (true) {
         // Lock std::cout
-        cout_mutex.lock();
-        std::cout << "You: ";
-        //Read a message from the user
-        std::cin.getline(message, BUFFER_SIZE);
-        //Unlock std::cout
-        cout_mutex.unlock();
-        //Send the message to the server
-        send(sock, message, strlen(message), 0);
+        std::cin.getline(chatMsg.message, sizeof(chatMsg.message));
+        // Unlock std::cout
+
+        send(sock, &chatMsg, sizeof(chatMsg), 0);
     }
 }
 
-
 int main() {
     int sock = 0;
+    int flag = 1;
     struct sockaddr_in serv_addr;
     
     char buffer[BUFFER_SIZE] = {0};
@@ -74,6 +77,7 @@ int main() {
         perror("Socket creation error");
         exit(EXIT_FAILURE);
     }
+    setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(int));
 
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_port = htons(PORT);
@@ -88,12 +92,21 @@ int main() {
         exit(EXIT_FAILURE);
     }
 
-    std::cout << "Connected to server. Type messages and press enter." << std::endl;
+    std::string username;
+    std::cout << "Please enter your name: ";
+    std::getline(std::cin, username);
+    std::cout << username << std::endl;
 
-    std::thread recvThread(receiveMessage, sock);
-    std::thread sendThread(sendMessage, sock);
+    // Send username to the server.
+    send(sock, username.c_str(), username.length(), 0);
 
-    sendThread.detach();  // Detach the sendThread.
+    std::cout << "Welcome " << username << ". Type messages and press enter." << std::endl;
+
+    std::thread sendThread(sendMessage, sock, username);
+    std::thread recvThread(receiveMessage, sock, username);
+
+
+    sendThread.join();  // Detach the sendThread.
     recvThread.join();    // Wait for the recvThread to finish.
 
 
